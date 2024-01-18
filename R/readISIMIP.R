@@ -14,6 +14,12 @@
 #' co2 ("default", "2015co2"),
 #' version c("2a","2b","3a","3b")))
 #' Example of yield subtype : "yields:EPIC-IIASA:ukesm1-0-ll:ssp585:default:3b"
+#' 
+#' NOTE: For the purpose of calculating HDD/CDD data for EDGE-B, this function was
+#' edited such that the subtype may also be a file name consisting of the 
+#' variables "tas", "rsds", "sfc", "CountryMask" or "huss". (author: Hagen Tockhorn)
+#' 
+#' 
 #' @return MAgPIE object with the requested data
 #' @author Jan Philipp Dietrich, Felicitas Beier, David Chen
 #' @note Values for years before 1961 will be ignored to reduce overall object size
@@ -176,6 +182,84 @@ readISIMIP <- function(subtype = "airww:LPJmL:gfdl-esm2m:2b") {
 
 
   }
+  
+  # EDGE-B PART ----------------------------------------------------------------
+  
+  if (grepl("tas", subtype)) {
+    cwd <- getwd()
+    setwd(file.path(getConfig("sourcefolder"), "ISIMIP", "tas"))
+    r <- raster::brick(subtype, src = "") %>%
+      round(digits=1)
+    setwd(cwd)
+    x <- list(x = r, class = "RasterBrick")
+  }
+  
+  if (grepl("population", subtype)) {
+    cwd <- getwd()
+    setwd(file.path(getConfig("sourcefolder"), "ISIMIP", "population"))
+    r <- raster::brick(subtype)
+    
+    subtype <- gsub(".nc4", "", subtype)
+    
+    # rename years
+    years <- strsplit(tail(strsplit(subtype, "_")[[1]], 1), "-")[[1]]
+    names(r) <- paste0("y", years[1]:years[2])
+    
+    # filter relevant years
+    r <- raster::dropLayer(
+      r, as.numeric(substr(names(r), 2, 5)) < firstHistYear)
+    
+    # aggregate to common resolution of 0.5 deg
+    if (any(raster::res(r) != 0.5)) {
+      r <- raster::aggregate(r, fun = "sum",
+                             fact = round(0.5 / raster::res(r), 3))
+      raster::res(r)    <- 0.5
+      raster::extent(r) <- round(raster::extent(r))
+    }
+    
+    setwd(cwd)
+    x <- list(x = raster::brick(r), class = "RasterBrick")
+  }
+  
+  if (grepl("CountryMask", subtype)) {
+    cwd <- getwd()
+    setwd(file.path(getConfig("sourcefolder"), "ISIMIP", subtype))
+    files <- Sys.glob("*.nc")
+    vars <- names(ncdf4::nc_open(files)[["var"]])
+    countries <- list()
+    for (var in vars) {
+      countries[[var]] <- raster::brick(files, varname = var)
+    }
+    r <- raster::brick(countries)
+    names(r) <- gsub("m_", "", vars)
+    setwd(cwd)
+    x <- list(x = r, class = "RasterBrick")
+  }
+  
+  if (grepl("sfcWind", subtype)) {
+    cwd <- getwd()
+    setwd(file.path(getConfig("sourcefolder"), "ISIMIP", "sfc"))
+    r <- raster::brick(subtype, src="")
+    setwd(cwd)
+    x <- list(x = r, class = "RasterBrick")
+  }
+  
+  if (grepl("rsds", subtype)) {
+    cwd <- getwd()
+    setwd(file.path(getConfig("sourcefolder"), "ISIMIP", "rsds"))
+    r <- raster::brick(subtype, src="")
+    setwd(cwd)
+    x <- list(x = r, class = "RasterBrick")
+  }
+  
+  if (grepl("huss", subtype)) {
+    cwd <- getwd()
+    setwd(file.path(getConfig("sourcefolder"), "ISIMIP", "huss"))
+    r <- raster::brick(subtype, src="")
+    setwd(cwd)
+    x <- list(x = r, class = "RasterBrick")
+  }
+  
 
   return(x)
 }
